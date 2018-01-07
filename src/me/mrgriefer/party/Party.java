@@ -1,4 +1,4 @@
-package packa-ge;
+package me.mrgriefer.slaparoo.party;
 
 import java.util.ArrayList;
 import java.util.List;
