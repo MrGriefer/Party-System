@@ -1,0 +1,187 @@
+package me.mrgriefer.slaparoo.listener;
+
+import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+
+import me.mrgriefer.slaparoo.Slaparoo;
+import me.mrgriefer.slaparoo.commands.messages.MessageHandler;
+import me.mrgriefer.slaparoo.game.Game;
+import me.mrgriefer.slaparoo.game.GamePlayer;
+import me.mrgriefer.slaparoo.game.GameState;
+import me.mrgriefer.slaparoo.party.Party;
+import me.mrgriefer.slaparoo.party.PartyPrivacy;
+import me.mrgriefer.slaparoo.util.sounds.SoundUtil;
+import me.mrgriefer.slaparoo.util.sounds.Sounds;
+
+public class PartyListener implements Listener {
+
+	private FileConfiguration cfg = Slaparoo.instance.getConfig();
+	
+	@EventHandler
+	public void onPlayerQuit(PlayerQuitEvent event) {
+		GamePlayer gp = Slaparoo.getPlayerManager().getPlayer(event.getPlayer().getName());
+		if (gp.isInGame()) {
+			if (gp.getParty() != null) {
+				gp.getParty().leaveParty(gp);
+			}
+		}
+	}
+	
+	@EventHandler
+	public void onPartyMainMenu(InventoryClickEvent event) {
+		Inventory inventory = event.getClickedInventory();
+		if (inventory == null) {
+			return;
+		}
+		
+		if (inventory.getName() == null) {
+			return;
+		}
+		
+		if (event.getCurrentItem() == null) {
+			return;
+		}
+		
+		ItemStack item = event.getCurrentItem();
+		
+		if (!(event.getWhoClicked() instanceof Player)) {
+			return;
+		}
+		
+		if (!inventory.getName().equals("Select your option!")) {
+			return;
+		}
+		
+		if (item == null || !item.hasItemMeta()) {
+			return;
+		}
+		
+		if (item.getType() == Material.AIR) {
+			event.setCancelled(true);
+			return;
+		}
+		
+		Player player = (Player) event.getWhoClicked();
+		GamePlayer gp = Slaparoo.getPlayerManager().getPlayer(player);
+		if (gp.isInGame()) {
+			Game game = gp.getGame();
+			if (game.getState() == GameState.WAITING || game.getState() == GameState.VOTING) {
+				if (compareItem(item, cfg.getString("Party.Default-Menu.Join.Name"))) {
+					event.setCancelled(true);
+					Slaparoo.getPartyManager().getPartySelector().open(player);
+					SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+				} else if (compareItem(item, cfg.getString("Party.Default-Menu.Create.Name"))) {
+					event.setCancelled(true);
+					gp.setParty(new Party(player, cfg.getInt("Party.Party-Capacity")));
+					Slaparoo.getPartyManager().getParties().add(gp.getParty());
+					Slaparoo.getPartyManager().updatePartiesInventory();
+					gp.getPlayer().openInventory(gp.getParty().getGUI());
+					SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+				}
+			} else {
+				gp.sendMessage(MessageHandler.getMessage("Prefix") + "§cThis can only be accessed during waiting or voting phase.");
+			}
+		} else {
+			gp.sendMessage(MessageHandler.getMessage("Prefix") + "§cYou need to be in a game to use this!");
+		}
+	}
+	
+	@EventHandler
+	public void onPartySettingsMenu(InventoryClickEvent event) {
+		Inventory inventory = event.getClickedInventory();
+		if (inventory == null) {
+			return;
+		}
+		
+		if (inventory.getName() == null) {
+			return;
+		}
+		
+		if (event.getCurrentItem() == null) {
+			return;
+		}
+		
+		ItemStack item = event.getCurrentItem();
+		
+		if (!(event.getWhoClicked() instanceof Player)) {
+			return;
+		}
+		
+		if (!inventory.getName().equals(cfg.getString("Party.Settings-Menu.Title").replace("&", "§"))) {
+			return;
+		}
+		
+		if (item == null || !item.hasItemMeta()) {
+			return;
+		}
+		
+		if (item.getType() == Material.AIR) {
+			event.setCancelled(true);
+			return;
+		}
+		
+		Player player = (Player) event.getWhoClicked();
+		GamePlayer gp = Slaparoo.getPlayerManager().getPlayer(player);
+		if (gp.isInGame()) {
+			Game game = gp.getGame();
+			if (game.getState() == GameState.WAITING || game.getState() == GameState.VOTING) {
+				if (gp.getParty() != null) {
+					if (compareItem(item, cfg.getString("Party.Settings-Menu.Leader.Name"))) {
+						event.setCancelled(true);
+						SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+					} else if (compareItem(item, cfg.getString("Party.Settings-Menu.Privacy.Name"))) {
+						event.setCancelled(true);
+						if (gp.getParty().getLeader().equals(player.getName())) {
+							PartyPrivacy privacy = gp.getParty().getPrivacy();
+							gp.getParty().setPrivacy(privacy == PartyPrivacy.INVITE ? PartyPrivacy.PUBLIC : PartyPrivacy.INVITE);
+							SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+						} else {
+							player.sendMessage(MessageHandler.getMessage("Party-Must-Be-Leader"));
+							SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+						}
+					} else if (compareItem(item, cfg.getString("Party.Settings-Menu.Players.Name"))) {
+						event.setCancelled(true);
+						player.openInventory(gp.getParty().getPlayersInventory());
+						SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+					} else if (compareItem(item, cfg.getString("Party.Settings-Menu.Invite.Name"))) {
+						event.setCancelled(true);
+						if (gp.getParty().getLeader().equals(player.getName())) {
+							Slaparoo.getPartyManager().getPlayerInviter().open(player);
+							SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+						} else {
+							player.sendMessage(MessageHandler.getMessage("Party-Must-Be-Leader"));
+							SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+						}
+					} else if (compareItem(item, cfg.getString("Party.Settings-Menu.Leave.Name"))) {
+						event.setCancelled(true);
+						SoundUtil.playSound(player, Sounds.WOOD_CLICK);
+						gp.getParty().leaveParty(gp);
+					}
+				} else {
+					gp.sendMessage(MessageHandler.getMessage("Prefix") + "§cYou need to be in a party to use this!");
+				}
+			} else {
+				gp.sendMessage(MessageHandler.getMessage("Prefix") + "§cThis can only be accessed during waiting or voting phase.");
+			}
+		} else {
+			gp.sendMessage(MessageHandler.getMessage("Prefix") + "§cYou need to be in a game to use this!");
+		}
+	}
+	
+	private boolean compareItem(ItemStack item, String name) {
+		if (item.hasItemMeta()
+				&& item.getItemMeta().hasDisplayName()
+				&& item.getItemMeta().getDisplayName().equals(name.replace("&", "§"))) {
+			return true;
+		}
+		return false;
+	}
+	
+}
